@@ -1,0 +1,77 @@
+
+# سيعمل سير العمل هذا على إنشاء حاوية عامل إرساء ، ونشرها في Google Container Registry ، ونشرها في GKE عند إنشاء إصدار
+#
+# لتكوين سير العمل هذا:
+#
+# 1. تأكد من أن المستودع الخاص بك يحتوي على التكوين اللازم لمجموعة Google Kubernetes Engine ، بما في ذلك publish.yml ، kustomization.yml ، service.yml ، إلخ.
+#
+# 2. قم بإعداد الأسرار في مساحة العمل الخاصة بك: GKE_PROJECT باسم المشروع و GKE_SA_KEY باستخدام مفتاح حساب خدمة JSON المشفر Base64 (https://github.com/GoogleCloudPlatform/github-actions/tree/docs/service-account- key / setup-gcloud # المدخلات).
+#
+# 3. قم بتغيير قيم متغيرات البيئة GKE_ZONE و GKE_CLUSTER و IMAGE و DEPLOYMENT_NAME (أدناه).
+#
+# لمزيد من الدعم حول كيفية تشغيل سير العمل ، يرجى زيارة https://github.com/google-github-actions/setup-gcloud/tree/master/example-workflows/gke
+
+الاسم : الإنشاء والنشر في GKE
+
+على :
+  الافراج عن :
+    الأنواع : [تم إنشاؤه]
+
+env :
+  PROJECT_ID : $ { secrets.GKE_PROJECT }}
+  GKE_CLUSTER : المجموعة 1     # TODO: التحديث إلى اسم الكتلة
+  GKE_ZONE : us- central1 -c    # TODO: التحديث إلى منطقة الكتلة
+  DEPLOYMENT_NAME : GKE اختبار # TODO: التحديث لاسم الانتشار
+  الصورة : موقع ثابت
+
+الوظائف :
+  إعداد-بناء-نشر-نشر :
+    name : الإعداد والبناء والنشر والنشر
+    يعمل على : ubuntu-latest
+    البيئة : الإنتاج
+
+    خطوات :
+    - الاسم : الخروج
+      يستخدم : الإجراءات / الخروج @ v2
+
+    # إعداد gcloud CLI
+    - الاستخدامات : google-github-actions/setup-gcloud@v0.2.0
+      مع :
+        service_account_key : $ {{secrets.GKE_SA_KEY}}
+        معرّف المشروع : $ {{secrets.GKE_PROJECT}}
+
+    # تكوين Docker لاستخدام أداة سطر أوامر gcloud كأوراق اعتماد
+    # المساعد للمصادقة
+    - تشغيل : | -
+        gcloud - المصادقة الهادئة config-docker
+    # احصل على بيانات اعتماد GKE حتى نتمكن من النشر إلى المجموعة
+    - الاستخدامات : google-github-actions/get-gke-credentials@v0.2.1
+      مع :
+        اسم الكتلة : $ {{env.GKE_CLUSTER}}
+        الموقع : $ {{env.GKE_ZONE}}
+        بيانات الاعتماد : $ {{secrets.GKE_SA_KEY}}
+
+    # بناء صورة Docker
+    - الاسم : بناء
+      تشغيل : | -
+        بناء عامل ميناء \
+          - علامة "gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA" \
+          --build-arg GITHUB_SHA = "$ GITHUB_SHA" \
+          --build-arg GITHUB_REF = "$ GITHUB_REF" \
+          .
+    # ادفع صورة Docker إلى Google Container Registry
+    - الاسم : انشر
+      تشغيل : | -
+        دفع عامل الإرساء "gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA"
+    # إعداد تخصيص
+    - الاسم : إعداد Kustomize
+      تشغيل : | -
+        curl -sfLo تخصيص https://github.com/kubernetes-sigs/kustomize/releases/download/v3.1.0/kustomize_3.1.0_linux_amd64
+        chmod u + x ./ تخصيص
+    # انشر صورة Docker في مجموعة GKE
+    - الاسم : النشر
+      تشغيل : | -
+        ./kustomize تحرير مجموعة الصور gcr.io/PROJECT_ID/IMAGE:TAG=gcr.io/$PROJECT_ID/$IMAGE:$GITHUB_SHA
+        ./kustomize build. | kubectl تطبيق -f -
+        نشر حالة طرح kubectl / $ DEPLOYMENT_NAME
+        kubectl الحصول على الخدمات على نطاق واسع
